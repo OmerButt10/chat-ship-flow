@@ -17,7 +17,7 @@ from django.utils import timezone
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def create_inventory(request):
     """Create inventory with approval logic.
 
@@ -61,7 +61,7 @@ def create_inventory(request):
 
 
 class MergeLabelsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request, order_id):
         # expects file_ids as ordered list in body
@@ -73,7 +73,7 @@ class MergeLabelsView(APIView):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def whoami(request):
     user = request.user
     return Response({
@@ -85,7 +85,7 @@ def whoami(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def inventory_list(request):
     qs = Inventory.objects.all().order_by("-last_updated")
     serializer = InventorySerializer(qs, many=True)
@@ -93,7 +93,7 @@ def inventory_list(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def upload_files(request):
     """Handle multipart file uploads and create UploadedFile records.
 
@@ -128,7 +128,7 @@ def upload_files(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def inventory_approve(request, inventory_id):
     inv = get_object_or_404(Inventory, id=inventory_id)
     user = request.user
