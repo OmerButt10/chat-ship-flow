@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import api from '@/lib/api';
 import { Upload, FileUp, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,9 @@ export default function UploadPage() {
   const [orderId, setOrderId] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; url: string; name: string }>>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [mergedUrl, setMergedUrl] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setFiles(Array.from(e.target.files));
@@ -17,7 +21,21 @@ export default function UploadPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!orderId || files.length === 0) return;
-    setSubmitted(true);
+    // upload to backend
+    const fd = new FormData();
+    fd.append('order_id', orderId);
+    files.forEach((f) => fd.append('files', f));
+    api
+      .post('/uploads/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then((res) => {
+        setSubmitted(true);
+        setUploadedFiles(res.data.files || []);
+        setSelectedIds((res.data.files || []).map((f: any) => f.id));
+      })
+      .catch((err) => {
+        console.error('upload failed', err);
+        // keep previous UX simple: mark not submitted
+      });
   };
 
   return (
@@ -90,6 +108,77 @@ export default function UploadPage() {
           )}
         </CardContent>
       </Card>
+      {submitted && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Uploaded Files</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {uploadedFiles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No files uploaded.</p>
+            ) : (
+              <div className="space-y-2">
+                {uploadedFiles.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(f.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds((s) => [...s, f.id]);
+                          else setSelectedIds((s) => s.filter((id) => id !== f.id));
+                        }}
+                      />
+                      <a href={f.url} target="_blank" rel="noreferrer" className="text-sm text-primary underline">
+                        {f.name}
+                      </a>
+                    </label>
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      // merge selected files
+                      if (!orderId || selectedIds.length === 0) return;
+                      api
+                        .post(`/orders/${orderId}/merge-labels/`, { file_ids: selectedIds })
+                        .then((res) => {
+                          setMergedUrl(res.data.url);
+                        })
+                        .catch((err) => {
+                          console.error('merge failed', err);
+                        });
+                    }}
+                    disabled={selectedIds.length === 0}
+                  >
+                    Merge Selected
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSubmitted(false);
+                      setOrderId('');
+                      setFiles([]);
+                      setUploadedFiles([]);
+                      setSelectedIds([]);
+                      setMergedUrl(null);
+                    }}
+                  >
+                    Upload More
+                  </Button>
+                </div>
+                {mergedUrl && (
+                  <div className="pt-4">
+                    <a href={mergedUrl} target="_blank" rel="noreferrer" className="text-sm text-primary underline">
+                      Open merged PDF
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

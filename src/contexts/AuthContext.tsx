@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import api, { setAuthToken } from '@/lib/api';
 import type { User, UserRole } from '@/types';
 
 interface AuthContextType {
@@ -11,27 +12,56 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Demo users for MVP
-const DEMO_USERS: Record<string, User> = {
-  admin: { id: '1', email: 'admin@warehouse.com', full_name: 'Admin User', role: 'admin', created_at: new Date().toISOString() },
-  staff: { id: '2', email: 'staff@warehouse.com', full_name: 'Staff Member', role: 'warehouse_staff', created_at: new Date().toISOString() },
-  client: { id: '3', email: 'client@warehouse.com', full_name: 'Acme Corp', role: 'client', created_at: new Date().toISOString() },
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(DEMO_USERS.admin);
+  const [user, setUser] = useState<User | null>(null);
 
-  const login = useCallback(async (email: string, _password: string) => {
-    const found = Object.values(DEMO_USERS).find(u => u.email === email);
-    if (found) setUser(found);
-    else throw new Error('Invalid credentials');
+  // load tokens from storage
+  useEffect(() => {
+    const access = localStorage.getItem('access_token');
+    const refresh = localStorage.getItem('refresh_token');
+    if (access) {
+      setAuthToken(access);
+      // fetch whoami
+      api.get('/whoami/').then(res => setUser(res.data)).catch(() => {
+        // try refresh
+        if (refresh) refreshToken(refresh);
+      });
+    }
   }, []);
 
-  const logout = useCallback(() => setUser(null), []);
+  const refreshToken = useCallback(async (refresh: string) => {
+    try {
+      const res = await api.post('/token/refresh/', { refresh });
+      const access = res.data.access;
+      localStorage.setItem('access_token', access);
+      setAuthToken(access);
+      const who = await api.get('/whoami/');
+      setUser(who.data);
+    } catch (e) {
+      logout();
+    }
+  }, []);
+
+  const login = useCallback(async (username: string, password: string) => {
+    const res = await api.post('/token/', { username, password });
+    const { access, refresh } = res.data;
+    localStorage.setItem('access_token', access);
+    localStorage.setItem('refresh_token', refresh);
+    setAuthToken(access);
+    const who = await api.get('/whoami/');
+    setUser(who.data);
+  }, []);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    setAuthToken(null);
+    setUser(null);
+  }, []);
 
   const switchRole = useCallback((role: UserRole) => {
-    const found = Object.values(DEMO_USERS).find(u => u.role === role);
-    if (found) setUser(found);
+    // Client-side role switch retained for demos; in production roles come from backend
+    setUser(prev => prev ? { ...prev, role } : prev);
   }, []);
 
   return (

@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockInventory } from '@/data/mockData';
 import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const statusVariant = (s: string) =>
   s === 'in_stock' ? 'completed' as const :
@@ -12,10 +14,36 @@ const statusVariant = (s: string) =>
 
 export default function InventoryPage() {
   const [search, setSearch] = useState('');
+  const [sku, setSku] = useState('');
+  const [location, setLocation] = useState('');
+  const [quantity, setQuantity] = useState(0);
 
-  const filtered = mockInventory.filter(item =>
-    item.sku_name.toLowerCase().includes(search.toLowerCase())
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  const { data: inventory = [] } = useQuery<any[]>({
+    queryKey: ['inventory'],
+    queryFn: async () => {
+      const res = await api.get('/inventory/');
+      return res.data;
+    },
+  });
+
+  const filtered = (inventory || []).filter((item: any) =>
+    (item.sku || '').toLowerCase().includes(search.toLowerCase())
   );
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+  await api.post('/inventory/create/', { sku, location, quantity_on_hand: quantity, extra_fields: {} });
+    setSku(''); setLocation(''); setQuantity(0);
+  qc.invalidateQueries({ queryKey: ['inventory'] });
+  }
+
+  async function handleApprove(id: string) {
+  await api.post(`/inventory/${id}/approve/`, {});
+  qc.invalidateQueries({ queryKey: ['inventory'] });
+  }
 
   return (
     <div className="space-y-6">
@@ -54,18 +82,23 @@ export default function InventoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map(item => (
+              {filtered.map((item: any) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.sku_name}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell className="font-medium">{item.sku}</TableCell>
+                  <TableCell>{item.quantity_on_hand}</TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant(item.status)}>
-                      {item.status.replace('_', ' ')}
+                    <Badge variant={item.status === 'APPROVED' ? 'completed' : item.status === 'PENDING' ? 'warning' : 'destructive'}>
+                      {item.status}
                     </Badge>
                   </TableCell>
                   <TableCell>{item.location || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {new Date(item.updated_at).toLocaleDateString()}
+                    {item.last_updated ? new Date(item.last_updated).toLocaleDateString() : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {user?.role !== 'client' && item.status === 'PENDING' && (
+                      <button className="btn-approve" onClick={() => handleApprove(item.id)}>Approve</button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
