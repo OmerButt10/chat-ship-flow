@@ -13,50 +13,33 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  // For local development we provide a demo authenticated user so the app
+  // doesn't redirect to login while auth is intentionally disabled on the backend.
+  const DEMO_USER: User = {
+    id: '00000000-0000-0000-0000-000000000000',
+    email: 'dev@local',
+    full_name: 'Developer',
+    role: 'admin',
+    created_at: new Date().toISOString(),
+  };
 
-  // load tokens from storage
-  useEffect(() => {
-    const access = localStorage.getItem('access_token');
-    const refresh = localStorage.getItem('refresh_token');
-    if (access) {
-      setAuthToken(access);
-      // fetch whoami
-      api.get('/whoami/').then(res => setUser(res.data)).catch(() => {
-        // try refresh
-        if (refresh) refreshToken(refresh);
-      });
-    }
+  const [user, setUser] = useState<User | null>(DEMO_USER);
+
+
+  // In this dev mode the login/logout functions are no-ops that operate on
+  // the demo user so UI behaves as authenticated without needing real tokens.
+  const refreshToken = useCallback(async (_refresh: string) => {
+    // no-op in dev
+    setUser(DEMO_USER);
   }, []);
 
-  const refreshToken = useCallback(async (refresh: string) => {
-    try {
-      const res = await api.post('/token/refresh/', { refresh });
-      const access = res.data.access;
-      localStorage.setItem('access_token', access);
-      setAuthToken(access);
-      const who = await api.get('/whoami/');
-      setUser(who.data);
-    } catch (e) {
-      logout();
-    }
-  }, []);
-
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await api.post('/token/', { username, password });
-    const { access, refresh } = res.data;
-    localStorage.setItem('access_token', access);
-    localStorage.setItem('refresh_token', refresh);
-    setAuthToken(access);
-    const who = await api.get('/whoami/');
-    setUser(who.data);
+  const login = useCallback(async (_username: string, _password: string) => {
+    setUser(DEMO_USER);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    setAuthToken(null);
-    setUser(null);
+    // keep demo user active for development convenience
+    setUser(DEMO_USER);
   }, []);
 
   const switchRole = useCallback((role: UserRole) => {
